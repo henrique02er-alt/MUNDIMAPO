@@ -20,7 +20,7 @@ open index.html
 
 ## demo
 
-🔗 [henrique02er-alt.github.io/potencial-eureka](https://henrique02er-alt.github.io/potencial-eureka)
+🔗 [henrique02er-alt.github.io/potencial-eureka](https://https://henrique02er-alt.github.io/MUNDIMAPO/)
 
 &nbsp;
 
