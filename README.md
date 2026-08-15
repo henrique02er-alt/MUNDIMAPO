@@ -6,7 +6,7 @@ Um mapa-múndi interativo minimalista, renderizado inteiramente em traços finos
 
 ## sobre o projeto
 
-Visualização geográfica construída do zero com D3.js e SVG. Sem preenchimentos, sem cores, apenas os contornos do mundo desenhados em traço fino, com um efeito sutil de relevo animado que dá ao mapa uma sensação orgânica, quase viva
+Visualização geográfica construída do zero com D3.js e SVG. Sem preenchimentos, sem cores, apenas os contornos do mundo desenhados em traço fino, com um efeito sutil de relevo animado que dá ao mapa uma sensação orgânica e viva.
 ## como rodar
 
 Arquivo único, sem dependências locais. Basta abrir o `index.html` no navegador, as bibliotecas são carregadas via CDN.
