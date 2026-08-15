@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mapa Múndi — Traços</title>
+<style>
+  :root {
+    --bg:       #070707;
+    --line:     #eaeaea;
+    --line-dim: #2e2e2e;
+    --caption:  #555;
+  }
+
+  *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+  html, body {
+    width: 100%; height: 100%;
+    background: var(--bg);
+    overflow: hidden;
+    font-family: 'Courier New', monospace;
+  }
+
+  .stage {
+    width: 100%; height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  svg { display: block; width: min(94vw, 1400px); height: auto; }
+
+  /* land fill é none — só traços */
+  .land  { fill: none; stroke: var(--line);     stroke-width: 0.5;  stroke-linejoin: round; }
+  .inner { fill: none; stroke: var(--line-dim); stroke-width: 0.25; stroke-linejoin: round; }
+  .sphere{ fill: none; stroke: var(--line-dim); stroke-width: 0.35; }
+
+  /* graticule (linhas de grade) ultra-discreto */
+  .grid  { fill: none; stroke: var(--line-dim); stroke-width: 0.15; opacity: 0.6; }
+
+  .caption {
+    position: fixed;
+    bottom: 6%;
+    left: 50%;
+    transform: translateX(-50%);
+    color: var(--caption);
+    font-size: 11px;
+    letter-spacing: 0.42em;
+    text-transform: uppercase;
+    pointer-events: none;
+    user-select: none;
+  }
+
+  /* loading com fade-out via classe */
+  #loading {
+    position: fixed;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #444;
+    font-size: 11px;
+    letter-spacing: 0.35em;
+    text-transform: uppercase;
+    transition: opacity 0.8s ease;
+    pointer-events: none;
+  }
+  #loading.hidden { opacity: 0; }
+
+  /* cursor de arrasto */
+  svg { cursor: grab; }
+  svg.dragging { cursor: grabbing; }
+</style>
+</head>
+<body>
+
+<div class="stage" id="stage"></div>
+<div id="loading">carregando</div>
+<p class="caption">mapa múndi</p>
+
+<script src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/topojson-client@3/dist/topojson-client.min.js"></script>
+<script>
+(() => {
+  /* ── dimensões base ── */
+  const W = 960, H = 500;
+
+  /* ── SVG ── */
+  const svg = d3.select('#stage')
+    .append('svg')
+    .attr('viewBox', `0 0 ${W} ${H}`)
+    .attr('aria-label', 'Mapa-múndi em traços');
+
+  /* ── filtro de relevo (turbulência animada) ── */
+  const defs = svg.append('defs');
+
+  const filter = defs.append('filter')
+    .attr('id', 'relevo')
+    .attr('x', '-5%').attr('y', '-5%')
+    .attr('width', '110%').attr('height', '110%');
+
+  const turb = filter.append('feTurbulence')
+    .attr('type', 'fractalNoise')
+    .attr('baseFrequency', '0.010 0.028')
+    .attr('numOctaves', 2)
+    .attr('seed', 5)
+    .attr('result', 'noise');
+
+  /* animação suave da frequência — dá sensação de "vivo" */
+  turb.append('animate')
+    .attr('attributeName', 'baseFrequency')
+    .attr('values', '0.010 0.028;0.013 0.020;0.010 0.028')
+    .attr('dur', '22s')
+    .attr('repeatCount', 'indefinite');
+
+  filter.append('feDisplacementMap')
+    .attr('in', 'SourceGraphic')
+    .attr('in2', 'noise')
+    .attr('scale', '1.8')          /* ligeiramente menor que o original: menos distorção exagerada */
+    .attr('xChannelSelector', 'R')
+    .attr('yChannelSelector', 'G');
+
+  /* ── projeção ── */
+  const projection = d3.geoNaturalEarth1()
+    .fitSize([W, H], { type: 'Sphere' });
+
+  let pathGen = d3.geoPath(projection);
+
+  /* ── camadas ── */
+
+  /* esfera de fundo */
+  svg.append('path')
+    .datum({ type: 'Sphere' })
+    .attr('class', 'sphere')
+    .attr('d', pathGen);
+
+  /* graticule (paralelos e meridianos) a cada 30° */
+  const graticule = d3.geoGraticule().step([30, 30]);
+  svg.append('path')
+    .datum(graticule())
+    .attr('class', 'grid')
+    .attr('d', pathGen);
+
+  /* grupo de terra — recebe o filtro */
+  const landGroup = svg.append('g').attr('filter', 'url(#relevo)');
+  const landPath  = landGroup.append('path').attr('class', 'land');
+  const innerPath = landGroup.append('path').attr('class', 'inner');  /* fronteiras internas */
+
+  /* ── drag para rotacionar ── */
+  let dragStart = null;
+
+  svg.call(
+    d3.drag()
+      .on('start', (e) => {
+        dragStart = [e.x, e.y];
+        svg.classed('dragging', true);
+      })
+      .on('drag', (e) => {
+        if (!dragStart) return;
+        const dx = e.x - dragStart[0];
+        const dy = e.y - dragStart[1];
+        dragStart = [e.x, e.y];
+
+        const rot = projection.rotate();
+        /* sensibilidade proporcional à largura do SVG renderizado */
+        const k = 120 / W;
+        projection.rotate([rot[0] + dx * k, rot[1] - dy * k]);
+
+        pathGen = d3.geoPath(projection);
+        redraw();
+      })
+      .on('end', () => {
+        dragStart = null;
+        svg.classed('dragging', false);
+      })
+  );
+
+  /* ── busca dos dados ── */
+  fetch('https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json')
+    .then(r => {
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      return r.json();
+    })
+    .then(world => {
+      const countries = topojson.feature(world, world.objects.countries);
+      /* bordas internas entre países */
+      const borders   = topojson.mesh(world, world.objects.countries, (a, b) => a !== b);
+
+      landPath.datum(countries);
+      innerPath.datum(borders);
+      redraw();
+
+      /* fade-out do loading */
+      const el = document.getElementById('loading');
+      el.classList.add('hidden');
+      el.addEventListener('transitionend', () => el.remove(), { once: true });
+    })
+    .catch(err => {
+      console.warn('world-atlas:', err);
+      document.getElementById('loading').textContent = 'sem conexão';
+    });
+
+  /* ── redesenha caminhos após rotação ── */
+  function redraw() {
+    const p = d3.geoPath(projection);
+    landPath.attr('d', p);
+    innerPath.attr('d', p);
+    svg.select('.sphere').attr('d', p({ type: 'Sphere' }));
+    svg.select('.grid').attr('d', p(graticule()));
+  }
+
+})();
+</script>
+
+</body>
+</html>
